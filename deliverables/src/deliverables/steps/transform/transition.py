@@ -60,6 +60,27 @@ class Transition(Step):
 
         return ", ".join(processed_cols)
 
+    @staticmethod
+    def _different_company_condition(alias="A"):
+        return f"""
+            (
+                COALESCE({alias}.PREV_RCID, 0) <> 0
+                AND COALESCE({alias}.NEW_RCID, 0) <> 0
+                AND {alias}.PREV_RCID <> {alias}.NEW_RCID
+            )
+            OR
+            (
+                (
+                    COALESCE({alias}.PREV_RCID, 0) = 0
+                    OR COALESCE({alias}.NEW_RCID, 0) = 0
+                )
+                AND NOT (
+                    {alias}.PREV_COMPANY_RAW
+                    <=> {alias}.NEW_COMPANY_RAW
+                )
+            )
+        """
+
     def _execute(self, cache, debug, test):
         source_table = self.source_table.execute(cache, debug, test)
         input_table = self.input_table.execute(cache, debug, test)
@@ -70,6 +91,7 @@ class Transition(Step):
         outflow_file = f"{schema}.{self.step_id}_outflow_file"
 
         col_str = self._process_columns()
+        different_company = self._different_company_condition("A")
 
         print(f"""
 ========== EXECUTING STEP: TRANSITION PIPELINE
@@ -86,7 +108,7 @@ Columns:                {self.columns}
             FROM {source_table} A
             JOIN {input_table} B
             ON A.NEW_RCID = B.RCID
-            WHERE A.PREV_RCID <> A.NEW_RCID;
+            WHERE ({different_company});
 
             drop table if exists {outflow_file};
             CREATE TABLE {outflow_file} AS
@@ -94,7 +116,7 @@ Columns:                {self.columns}
             FROM {source_table} A
             JOIN {input_table} B
             ON A.PREV_RCID = B.RCID
-            WHERE A.PREV_RCID <> A.NEW_RCID;
+            WHERE ({different_company});
             """
 
             execute(query)

@@ -1,30 +1,41 @@
--- Recreate position_current using the latest observed row for each
+-- Recreate position_current using one latest row for each
 -- position slot within a user's profile.
 --
--- A user can have more than one profile URI, so URI is included in the
--- grouping. ORDER_IN_PROFILE identifies the position's slot in that profile.
--- For each slot, the most recent scrape is treated as the current version.
+-- ROW_NUMBER is used instead of joining only on MAX(SCRAPE_TS)
+-- so that if multiple observations have the same latest scrape
+-- timestamp, only one deterministic current version is retained.
 
 DROP TABLE IF EXISTS position_current;
 
 CREATE TABLE position_current LIKE position_history;
 
 INSERT INTO position_current
-SELECT ph.*
-FROM position_history AS ph
-JOIN (
+SELECT
+    SCRAPE_TS,
+    USER_ID,
+    URI,
+    POSITION_ID,
+    COMPANY_RAW,
+    COMPANYURI,
+    TITLE_RAW,
+    LOCATION_RAW,
+    DESCRIPTION,
+    STARTDATE,
+    ENDDATE,
+    SEQUENCENO,
+    ORDER_IN_PROFILE
+FROM (
     SELECT
-        USER_ID,
-        URI,
-        ORDER_IN_PROFILE,
-        MAX(SCRAPE_TS) AS latest_scrape
-    FROM position_history
-    GROUP BY
-        USER_ID,
-        URI,
-        ORDER_IN_PROFILE
-) AS latest_profile_position
-    ON ph.USER_ID = latest_profile_position.USER_ID
-   AND ph.URI <=> latest_profile_position.URI
-   AND ph.ORDER_IN_PROFILE <=> latest_profile_position.ORDER_IN_PROFILE
-   AND ph.SCRAPE_TS = latest_profile_position.latest_scrape;
+        ph.*,
+        ROW_NUMBER() OVER (
+            PARTITION BY
+                USER_ID,
+                URI,
+                ORDER_IN_PROFILE
+            ORDER BY
+                SCRAPE_TS DESC,
+                POSITION_ID DESC
+        ) AS current_rank
+    FROM position_history AS ph
+) AS ranked_positions
+WHERE current_rank = 1;

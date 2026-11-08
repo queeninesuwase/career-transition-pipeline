@@ -9,7 +9,7 @@
 DROP TABLE IF EXISTS individual_position;
 
 CREATE TABLE individual_position LIKE position_current;
-git status
+
 ALTER TABLE individual_position
     ADD COLUMN CITY varchar(512),
     ADD COLUMN STATE varchar(512),
